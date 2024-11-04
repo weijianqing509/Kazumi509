@@ -15,7 +15,8 @@ import 'package:kazumi/utils/logger.dart';
 
 // 视频历史记录卡片 - 水平布局
 class BangumiHistoryCardV extends StatefulWidget {
-  const BangumiHistoryCardV({super.key, required this.historyItem, this.showDelete = true});
+  const BangumiHistoryCardV(
+      {super.key, required this.historyItem, this.showDelete = true});
 
   final History historyItem;
   final bool showDelete;
@@ -33,8 +34,9 @@ class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
 
   @override
   Widget build(BuildContext context) {
-    TextStyle style =
-        TextStyle(fontSize: Theme.of(context).textTheme.labelMedium!.fontSize, overflow: TextOverflow.ellipsis);
+    TextStyle style = TextStyle(
+        fontSize: Theme.of(context).textTheme.labelMedium!.fontSize,
+        overflow: TextOverflow.ellipsis);
     final InfoController infoController = Modular.get<InfoController>();
     final FavoriteController favoriteController =
         Modular.get<FavoriteController>();
@@ -45,6 +47,11 @@ class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
         color: Theme.of(context).colorScheme.secondaryContainer,
         child: InkWell(
           onTap: () async {
+            if (widget.showDelete) {
+              SmartDialog.showToast('编辑模式',
+                  displayType: SmartToastType.onlyRefresh);
+              return;
+            }
             SmartDialog.showLoading(msg: '获取中');
             bool flag = false;
             for (Plugin plugin in pluginsController.pluginList) {
@@ -63,6 +70,7 @@ class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
                 widget.historyItem.bangumiItem.nameCn == ''
                     ? widget.historyItem.bangumiItem.name
                     : widget.historyItem.bangumiItem.nameCn;
+            videoPageController.src = widget.historyItem.lastSrc;
             try {
               await infoController.queryRoads(widget.historyItem.lastSrc,
                   videoPageController.currentPlugin.name);
@@ -74,8 +82,7 @@ class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
             }
           },
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-                StyleString.safeSpace, 7, StyleString.safeSpace, 7),
+            padding: const EdgeInsets.all(7),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -133,10 +140,12 @@ class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
                       // 测试 因为API问题评分功能搁置
                       Text('番剧源: ${widget.historyItem.adapterName}',
                           style: style),
-                      Text('上次看到: 第${widget.historyItem.lastWatchEpisode}话',
-                          style: style),
                       Text(
-                          '排名: ${widget.historyItem.bangumiItem.rank}',
+                          widget.historyItem.lastWatchEpisodeName == ''
+                              ? '上次看到: 第${widget.historyItem.lastWatchEpisode}话'
+                              : '上次看到: ${widget.historyItem.lastWatchEpisodeName}',
+                          style: style),
+                      Text('排名: ${widget.historyItem.bangumiItem.rank}',
                           style: style),
                       Text(
                           widget.historyItem.bangumiItem.type == 2
@@ -166,12 +175,15 @@ class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
                         });
                       },
                     ),
-                    widget.showDelete ? IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () {
-                        historyController.deleteHistory(widget.historyItem);
-                      },
-                    ) : Container(),
+                    widget.showDelete
+                        ? IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () {
+                              historyController
+                                  .deleteHistory(widget.historyItem);
+                            },
+                          )
+                        : Container(),
                   ],
                 ),
               ],

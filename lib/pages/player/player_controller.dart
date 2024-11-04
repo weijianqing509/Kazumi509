@@ -1,3 +1,4 @@
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:video_player/video_player.dart';
 import 'package:kazumi/modules/danmaku/danmaku_module.dart';
 import 'package:mobx/mobx.dart';
@@ -20,7 +21,7 @@ abstract class _PlayerController with Store {
   bool loading = true;
 
   String videoUrl = '';
-  // 弹幕ID
+  // dandanPlay弹幕ID
   int bangumiID = 0;
   late VideoPlayerController mediaPlayer;
   late DanmakuController danmakuController;
@@ -72,8 +73,17 @@ abstract class _PlayerController with Store {
       mediaPlayer.dispose();
     } catch (_) {}
     KazumiLogger().log(Level.info, 'VideoItem开始初始化');
+    int episodeFromTitle = 0;
+    try {
+      episodeFromTitle = Utils.extractEpisodeNumber(videoPageController.roadList[videoPageController.currentRoad].identifier[videoPageController.currentEspisode - 1]);
+    } catch (e) {
+      KazumiLogger().log(Level.error, '从标题解析集数错误 ${e.toString()}');
+    }
+    if (episodeFromTitle == 0) {
+      episodeFromTitle = videoPageController.currentEspisode;
+    }
     getDanDanmaku(
-        videoPageController.title, videoPageController.currentEspisode);
+        videoPageController.title, episodeFromTitle);
     mediaPlayer = await createVideoController();
     bool aotoPlay = setting.get(SettingBoxKey.autoPlay, defaultValue: true);
     playerSpeed = setting.get(SettingBoxKey.defaultPlaySpeed, defaultValue: 1.0);
@@ -105,6 +115,12 @@ abstract class _PlayerController with Store {
     };
     mediaPlayer = VideoPlayerController.networkUrl(Uri.parse(videoUrl),
         httpHeaders: httpHeaders);
+    mediaPlayer.addListener(() {
+      if (mediaPlayer.value.hasError && !mediaPlayer.value.isCompleted) {
+        SmartDialog.showToast('播放器内部错误 ${mediaPlayer.value.errorDescription}');
+        KazumiLogger().log(Level.error, 'Player inent error. ${mediaPlayer.value.errorDescription} $videoUrl');
+      }
+    });
     await mediaPlayer.initialize();
     KazumiLogger().log(Level.info, 'videoController 配置成功 $videoUrl');
     return mediaPlayer;
@@ -150,6 +166,17 @@ abstract class _PlayerController with Store {
       danDanmakus.clear();
       bangumiID = await DanmakuRequest.getBangumiID(title);
       var res = await DanmakuRequest.getDanDanmaku(bangumiID, episode);
+      addDanmakus(res);
+    } catch (e) {
+      KazumiLogger().log(Level.warning, '获取弹幕错误 ${e.toString()}');
+    }
+  }
+
+  Future getDanDanmakuByEpisodeID(int episodeID) async {
+    KazumiLogger().log(Level.info, '尝试获取弹幕 $episodeID');
+    try {
+      danDanmakus.clear();
+      var res = await DanmakuRequest.getDanDanmakuByEpisodeID(episodeID);
       addDanmakus(res);
     } catch (e) {
       KazumiLogger().log(Level.warning, '获取弹幕错误 ${e.toString()}');

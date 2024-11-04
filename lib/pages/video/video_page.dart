@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:kazumi/bean/appbar/drag_to_move_bar.dart' as dtb;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:scrollview_observer/scrollview_observer.dart';
 
 class VideoPage extends StatefulWidget {
   const VideoPage({super.key});
@@ -35,12 +36,29 @@ class _VideoPageState extends State<VideoPage>
   final HistoryController historyController = Modular.get<HistoryController>();
   late bool playResume;
 
+  ScrollController scrollController = ScrollController();
+  late GridObserverController observerController;
+  late AnimationController animation;
+  late Animation<Offset> _rightOffsetAnimation;
+
   // 当前播放列表
   late int currentRoad;
 
   @override
   void initState() {
     super.initState();
+    observerController = GridObserverController(controller: scrollController);
+    animation = AnimationController(
+      duration: const Duration(milliseconds: 100),
+      vsync: this,
+    );
+    _rightOffsetAnimation = Tween<Offset>(
+      begin: const Offset(1.0, 0.0),
+      end: const Offset(0.0, 0.0),
+    ).animate(CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeInOut,
+    ));
     WakelockPlus.enable();
     videoPageController.currentEspisode = 1;
     videoPageController.currentRoad = 0;
@@ -69,6 +87,8 @@ class _VideoPageState extends State<VideoPage>
     try {
       playerController.mediaPlayer.dispose();
     } catch (_) {}
+    observerController.controller?.dispose();
+    animation.dispose();
     WakelockPlus.disable();
     Utils.unlockScreenRotation();
     super.dispose();
@@ -78,18 +98,45 @@ class _VideoPageState extends State<VideoPage>
     videoPageController.showDebugLog = !videoPageController.showDebugLog;
   }
 
+  void menuJumpToCurrentEpisode() {
+    Future.delayed(const Duration(milliseconds: 20), () {
+      observerController.jumpTo(
+          index: videoPageController.currentEspisode > 1
+              ? videoPageController.currentEspisode - 1
+              : videoPageController.currentEspisode);
+    });
+  }
+
+  void openTabBodyAnimated() {
+    if (videoPageController.showTabBody) {
+      animation.forward();
+      menuJumpToCurrentEpisode();
+    }
+  }
+
+  void closeTabBodyAnimated() {
+    animation.reverse();
+    Future.delayed(const Duration(milliseconds: 100), () {
+      videoPageController.showTabBody = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      openTabBodyAnimated();
+    });
     return OrientationBuilder(builder: (context, orientation) {
       if (!Utils.isTablet() && !Utils.isDesktop()) {
         if (orientation == Orientation.landscape &&
             !videoPageController.androidFullscreen) {
           Utils.enterFullScreen(lockOrientation: false);
           videoPageController.androidFullscreen = true;
+          videoPageController.showTabBody = false;
         } else if (orientation == Orientation.portrait &&
             videoPageController.androidFullscreen) {
           Utils.exitFullScreen(lockOrientation: false);
+          menuJumpToCurrentEpisode();
           videoPageController.androidFullscreen = false;
         }
       }
@@ -103,55 +150,106 @@ class _VideoPageState extends State<VideoPage>
                 )),
           body: SafeArea(
             top: !videoPageController.androidFullscreen,
-            bottom: !videoPageController.androidFullscreen,
+            bottom: false, // set iOS and Android navigation bar to immersive
             left: !videoPageController.androidFullscreen,
             right: !videoPageController.androidFullscreen,
             child: (Utils.isDesktop()) ||
                     ((Utils.isTablet()) &&
                         MediaQuery.of(context).size.height <
                             MediaQuery.of(context).size.width)
-                ? Row(
+                ? Stack(
+                    alignment: Alignment.centerRight,
                     children: [
                       Container(
                           color: Colors.black,
                           height: MediaQuery.of(context).size.height,
-                          width: (!videoPageController.androidFullscreen &&
-                                  videoPageController.showTabBody)
-                              ? MediaQuery.of(context).size.height
-                              : MediaQuery.of(context).size.width,
-                          child: playerBody),
-                      (videoPageController.androidFullscreen ||
-                              !videoPageController.showTabBody)
-                          ? Container()
-                          : Expanded(
-                              child: Column(
-                              children: [
-                                tabBar,
-                                tabBody,
-                              ],
-                            ))
-                    ],
-                  )
-                : Column(
-                    children: [
-                      Container(
-                          color: Colors.black,
-                          height: videoPageController.androidFullscreen
-                              ? MediaQuery.of(context).size.height
-                              : MediaQuery.of(context).size.width * 9 / 16,
                           width: MediaQuery.of(context).size.width,
                           child: playerBody),
-                      videoPageController.androidFullscreen
-                          ? Container()
-                          : Expanded(
-                              child: Column(
+                      if (videoPageController.showTabBody) ...[
+                        GestureDetector(
+                          onTap: () {
+                            closeTabBodyAnimated();
+                          },
+                          child: Container(
+                            color: Colors.black38,
+                            width: double.infinity,
+                            height: double.infinity,
+                          ),
+                        ),
+                        SlideTransition(position: _rightOffsetAnimation,
+                        child: SizedBox(
+                            height: MediaQuery.of(context).size.height,
+                            width: MediaQuery.of(context).size.width * 1 / 3 > 420
+                                    ? 420
+                                    : MediaQuery.of(context).size.width * 1 / 3,
+                            child: Container(
+                                color: Theme.of(context).canvasColor,
+                                child: GridViewObserver(
+                                  controller: observerController,
+                                  child: Column(
+                                    children: [
+                                      tabBar,
+                                      tabBody,
+                                    ],
+                                  ),
+                                )))
+                        )]
+                    ],
+                  )
+                : (!videoPageController.androidFullscreen)
+                    ? Column(
+                        children: [
+                          Container(
+                              color: Colors.black,
+                              height: MediaQuery.of(context).size.width * 9 / 16,
+                              width: MediaQuery.of(context).size.width,
+                              child: playerBody),
+                          Expanded(
+                              child: GridViewObserver(
+                            controller: observerController,
+                            child: Column(
                               children: [
                                 tabBar,
                                 tabBody,
                               ],
-                            ))
-                    ],
-                  ),
+                            ),
+                          ))
+                        ],
+                      )
+                    : Stack(alignment: Alignment.centerRight, children: [
+                        Container(
+                            color: Colors.black,
+                            height: MediaQuery.of(context).size.height,
+                            width: MediaQuery.of(context).size.width,
+                            child: playerBody),
+                        if (videoPageController.showTabBody) ...[
+                          GestureDetector(
+                            onTap: () {
+                              closeTabBodyAnimated();
+                            },
+                            child: Container(
+                              color: Colors.black38,
+                              width: double.infinity,
+                              height: double.infinity,
+                            ),
+                          ),
+                          SlideTransition(position: _rightOffsetAnimation,
+                          child: SizedBox(
+                              height: MediaQuery.of(context).size.height,
+                              width: MediaQuery.of(context).size.height,
+                              child: Container(
+                                  color: Theme.of(context).canvasColor,
+                                  child: GridViewObserver(
+                                    controller: observerController,
+                                    child: Column(
+                                      children: [
+                                        tabBar,
+                                        tabBody,
+                                      ],
+                                    ),
+                                  )))
+                          )]
+                      ]),
           ),
         );
       });
@@ -254,6 +352,7 @@ class _VideoPageState extends State<VideoPage>
                                   if (videoPageController.androidFullscreen ==
                                       true) {
                                     Utils.exitFullScreen();
+                                    menuJumpToCurrentEpisode();
                                     videoPageController.androidFullscreen =
                                         false;
                                     return;
@@ -264,8 +363,24 @@ class _VideoPageState extends State<VideoPage>
                               const Expanded(
                                   child: dtb.DragToMoveArea(
                                       child: SizedBox(height: 40))),
+                              Visibility(
+                                visible: Utils.isDesktop() || Utils.isTablet(),
+                                child: IconButton(
+                                    onPressed: () {
+                                        videoPageController.showTabBody = !videoPageController.showTabBody;
+                                        openTabBodyAnimated();
+                                      },
+                                    icon: Icon(
+                                        videoPageController.showTabBody
+                                            ? Icons.menu_open
+                                            : Icons.menu_open_outlined,
+                                        color: Colors.white,
+                                      ))),
                               IconButton(
-                                icon: const Icon(Icons.bug_report,
+                                icon: Icon(
+                                    videoPageController.showDebugLog
+                                        ? Icons.bug_report
+                                        : Icons.bug_report_outlined,
                                     color: Colors.white),
                                 onPressed: () {
                                   showDebugConsole();
@@ -284,7 +399,7 @@ class _VideoPageState extends State<VideoPage>
           child: (!videoPageController.currentPlugin.useNativePlayer ||
                   playerController.loading)
               ? Container()
-              : const PlayerItem(),
+              : PlayerItem(openMenu: openTabBodyAnimated, locateEpisode: menuJumpToCurrentEpisode),
         ),
 
         /// workaround for webview_windows
@@ -302,7 +417,7 @@ class _VideoPageState extends State<VideoPage>
 
   Widget get tabBar {
     return Padding(
-      padding: const EdgeInsets.only(top: 10, bottom: 6),
+      padding: const EdgeInsets.all(8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -386,7 +501,7 @@ class _VideoPageState extends State<VideoPage>
         for (var urlItem in road.data) {
           int count0 = count;
           cardList.add(Container(
-            margin: const EdgeInsets.only(bottom: 10), // 改为bottom间距
+            margin: const EdgeInsets.only(bottom: 4), // 改为bottom间距
             child: Material(
               color: Theme.of(context).colorScheme.onInverseSurface,
               borderRadius: BorderRadius.circular(6),
@@ -398,6 +513,7 @@ class _VideoPageState extends State<VideoPage>
                     return;
                   }
                   KazumiLogger().log(Level.info, '视频链接为 $urlItem');
+                  closeTabBodyAnimated();
                   videoPageController.currentRoad = currentRoad;
                   videoPageController.changeEpisode(count0,
                       currentRoad: videoPageController.currentRoad);
@@ -421,7 +537,7 @@ class _VideoPageState extends State<VideoPage>
                             const SizedBox(width: 6)
                           ],
                           Text(
-                            '第$count话',
+                            road.identifier[count0 - 1],
                             style: TextStyle(
                                 fontSize: 13,
                                 color: (count0 ==
@@ -448,9 +564,10 @@ class _VideoPageState extends State<VideoPage>
     }
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.only(top: 0, right: 5, left: 5),
+        padding: const EdgeInsets.only(top: 0, right: 8, left: 8),
         child: GridView.builder(
           scrollDirection: Axis.vertical,
+          controller: scrollController,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount:
                 (Utils.isDesktop() && !Utils.isWideScreen()) ? 2 : 3,

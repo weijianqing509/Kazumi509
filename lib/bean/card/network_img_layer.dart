@@ -31,6 +31,8 @@ class NetworkImgLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String imageUrl = src ?? '';
+
+    //// We need this to shink memory usage
     int? memCacheWidth, memCacheHeight;
     double aspectRatio = (width / height).toDouble();
 

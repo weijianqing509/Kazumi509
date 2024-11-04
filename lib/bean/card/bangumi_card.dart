@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:kazumi/utils/constans.dart';
 import 'package:kazumi/utils/utils.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
@@ -12,11 +13,13 @@ class BangumiCardV extends StatelessWidget {
   const BangumiCardV({
     super.key,
     required this.bangumiItem,
+    this.canTap = true,
     this.longPress,
     this.longPressEnd,
   });
 
   final BangumiItem bangumiItem;
+  final bool canTap;
   final Function()? longPress;
   final Function()? longPressEnd;
 
@@ -24,17 +27,25 @@ class BangumiCardV extends StatelessWidget {
   Widget build(BuildContext context) {
     String heroTag = Utils.makeHeroTag(bangumiItem.id);
     final InfoController infoController = Modular.get<InfoController>();
-    final PopularController popularController = Modular.get<PopularController>();
+    final PopularController popularController =
+        Modular.get<PopularController>();
     return Card(
       elevation: 0,
       clipBehavior: Clip.hardEdge,
       margin: EdgeInsets.zero,
       child: GestureDetector(
         child: InkWell(
-          onTap: () async {
+          onTap: () {
+            if (!canTap) {
+              SmartDialog.showToast('编辑模式',
+                  displayType: SmartToastType.onlyRefresh);
+              return;
+            }
             infoController.bangumiItem = bangumiItem;
             if (popularController.searchKeyword == '') {
-              popularController.keyword = bangumiItem.nameCn == '' ? bangumiItem.name : (bangumiItem.nameCn);
+              popularController.keyword = bangumiItem.nameCn == ''
+                  ? bangumiItem.name
+                  : (bangumiItem.nameCn);
             } else {
               popularController.keyword = popularController.searchKeyword;
             }
@@ -86,7 +97,7 @@ class BangumiContent extends StatelessWidget {
     return Expanded(
       child: Padding(
         // 多列
-        padding: const EdgeInsets.fromLTRB(4, 5, 0, 3),
+        padding: const EdgeInsets.fromLTRB(5, 3, 5, 0),
         // 单列
         // padding: const EdgeInsets.fromLTRB(14, 10, 4, 8),
         child: Column(
@@ -102,7 +113,7 @@ class BangumiContent extends StatelessWidget {
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0.3,
                   ),
-                  maxLines: 1,
+                  maxLines: Utils.isDesktop() || Utils.isTablet() ? 3 : 2,
                   overflow: TextOverflow.ellipsis,
                 )),
               ],
